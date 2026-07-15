@@ -93,7 +93,7 @@ npm run start:http
 
 Isi `.env` untuk mode ini:
 ```
-MCP_HTTP_PORT=3333
+MCP_HTTP_PORT=9533
 MCP_HTTP_TOKEN=<generate token acak yang kuat, misal: openssl rand -hex 32>
 ```
 

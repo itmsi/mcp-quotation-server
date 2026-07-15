@@ -5,7 +5,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { createMcpServer } from "./mcpServer.js";
 
-const PORT = Number(process.env.MCP_HTTP_PORT ?? 3333);
+const PORT = Number(process.env.MCP_HTTP_PORT ?? 9533);
 // Token TERPISAH dari API_TOKEN backend — ini untuk membatasi siapa saja
 // yang boleh menghubungi MCP server ini lewat network. Kalau tidak diisi,
 // endpoint akan terbuka untuk siapa saja yang bisa menjangkau port ini
