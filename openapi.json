@@ -1,0 +1,11 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Motorsights Quotation API",
+    "version": "1.0.0"
+  },
+  "servers": [
+    { "url": "/api/quotation/", "description": "Development server" },
+    { "url": "https://gateway.motorsights.com/api/quotation/", "description": "Gateway server" }
+  ]
+}
