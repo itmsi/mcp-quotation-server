@@ -1,5 +1,6 @@
 import axios, { AxiosError, AxiosInstance } from "axios";
 import { config } from "./config.js";
+import { log } from "./logger.js";
 
 export const http: AxiosInstance = axios.create({
   baseURL: config.apiBaseUrl,
@@ -8,6 +9,45 @@ export const http: AxiosInstance = axios.create({
     Authorization: `Bearer ${config.apiToken}`,
   },
 });
+
+// Konfirmasi token terpasang saat startup
+log.info("httpClient ready", {
+  baseURL: config.apiBaseUrl,
+  tokenPrefix: config.apiToken.substring(0, 20) + "...",
+});
+
+// Interceptor: log Authorization header di setiap outgoing request
+http.interceptors.request.use((reqConfig) => {
+  const auth = reqConfig.headers?.Authorization as string | undefined;
+  log.info(`HTTP request`, {
+    method: reqConfig.method?.toUpperCase(),
+    url: `${reqConfig.baseURL}${reqConfig.url}`,
+    hasAuth: !!auth,
+    tokenPrefix: auth ? auth.substring(0, 27) + "..." : "MISSING",
+  });
+  return reqConfig;
+});
+
+// Interceptor: log response status
+http.interceptors.response.use(
+  (res) => {
+    log.info(`HTTP response`, {
+      status: res.status,
+      url: res.config.url,
+    });
+    return res;
+  },
+  (err) => {
+    if (axios.isAxiosError(err)) {
+      log.error(`HTTP response error`, {
+        status: err.response?.status,
+        url: err.config?.url,
+        message: err.message,
+      });
+    }
+    return Promise.reject(err);
+  }
+);
 
 /**
  * Error yang sudah diformat rapi supaya gampang dibaca oleh model (Claude)
