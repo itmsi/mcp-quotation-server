@@ -6,37 +6,43 @@ import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { createMcpServer } from "./mcpServer.js";
 import { log } from "./logger.js";
 import { config } from "./config.js";
+import { oauthRouter, validateAccessToken } from "./oauthServer.js";
 
 const PORT = Number(process.env.MCP_HTTP_PORT ?? 9533);
 
 const app = express();
 app.use(express.json());
+app.use(express.urlencoded({ extended: true })); // untuk POST /token form body
+
+// Register OAuth 2.0 endpoints (aktif hanya kalau OAUTH_ENABLED=true)
+if (config.oauth.enabled) {
+  app.use(oauthRouter);
+  log.info("OAuth 2.0 endpoints registered", { baseUrl: config.oauth.serverBaseUrl });
+}
 
 const transports: Record<string, StreamableHTTPServerTransport> = {};
 
-// ── OAuth validation ─────────────────────────────────────────────────────────
-// Client kirim: Authorization: Bearer <client_id>:<client_secret>
+// ── OAuth access_token validation ─────────────────────────────────────────────────────
 function checkOAuth(req: Request, res: Response, next: NextFunction) {
   if (!config.oauth.enabled) return next();
 
   const authHeader = req.headers["authorization"] as string | undefined;
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
-  const [clientId, clientSecret] = token?.split(":") ?? [];
 
-  if (clientId !== config.oauth.clientId || clientSecret !== config.oauth.clientSecret) {
-    log.error("OAuth rejected", { clientId: clientId ?? "(missing)", ip: req.ip });
+  if (!token || !validateAccessToken(token)) {
+    log.error("OAuth rejected: invalid or missing access_token", { ip: req.ip });
     res.status(401).json({
       jsonrpc: "2.0",
-      error: { code: -32001, message: "Unauthorized: client_id atau client_secret tidak valid" },
+      error: { code: -32001, message: "Unauthorized: access_token tidak valid atau expired" },
       id: null,
     });
     return;
   }
 
-  log.info("OAuth OK", { clientId });
+  log.info("OAuth OK", { ip: req.ip });
   next();
 }
-// ─────────────────────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────
 
 app.post("/mcp", checkOAuth, async (req: Request, res: Response) => {
   const sessionId = req.headers["mcp-session-id"] as string | undefined;

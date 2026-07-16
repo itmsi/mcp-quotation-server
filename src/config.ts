@@ -22,5 +22,6 @@ export const config = {
     enabled: oauthEnabled,
     clientId: oauthEnabled ? requireEnv("OAUTH_CLIENT_ID") : "",
     clientSecret: oauthEnabled ? requireEnv("OAUTH_CLIENT_SECRET") : "",
+    serverBaseUrl: (process.env.OAUTH_SERVER_BASE_URL ?? "").replace(/\/+$/, ""),
   },
 };
