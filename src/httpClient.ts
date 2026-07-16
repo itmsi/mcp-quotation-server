@@ -1,49 +1,50 @@
 import axios, { AxiosError, AxiosInstance } from "axios";
 import { config } from "./config.js";
 import { log } from "./logger.js";
+import { getToken, invalidateToken } from "./tokenManager.js";
 
 export const http: AxiosInstance = axios.create({
   baseURL: config.apiBaseUrl,
   timeout: config.timeoutMs,
-  headers: {
-    Authorization: `Bearer ${config.apiToken}`,
-  },
 });
 
-// Konfirmasi token terpasang saat startup
-log.info("httpClient ready", {
-  baseURL: config.apiBaseUrl,
-  tokenPrefix: config.apiToken.substring(0, 20) + "...",
-});
+log.info("httpClient ready", { baseURL: config.apiBaseUrl });
 
-// Interceptor: log Authorization header di setiap outgoing request
-http.interceptors.request.use((reqConfig) => {
-  const auth = reqConfig.headers?.Authorization as string | undefined;
-  log.info(`HTTP request`, {
+// Interceptor request: inject Bearer token fresh setiap request
+http.interceptors.request.use(async (reqConfig) => {
+  const token = await getToken();
+  reqConfig.headers.Authorization = `Bearer ${token}`;
+  log.info("HTTP request", {
     method: reqConfig.method?.toUpperCase(),
     url: `${reqConfig.baseURL}${reqConfig.url}`,
-    hasAuth: !!auth,
-    tokenPrefix: auth ? auth.substring(0, 27) + "..." : "MISSING",
+    hasAuth: true,
+    tokenPrefix: token.substring(0, 20) + "...",
   });
   return reqConfig;
 });
 
-// Interceptor: log response status
+// Interceptor response: kalau 401 → invalidate token lalu retry sekali
 http.interceptors.response.use(
   (res) => {
-    log.info(`HTTP response`, {
-      status: res.status,
-      url: res.config.url,
-    });
+    log.info("HTTP response", { status: res.status, url: res.config.url });
     return res;
   },
-  (err) => {
+  async (err) => {
     if (axios.isAxiosError(err)) {
-      log.error(`HTTP response error`, {
+      log.error("HTTP response error", {
         status: err.response?.status,
         url: err.config?.url,
         message: err.message,
       });
+      // Auto-retry sekali kalau 401 (token expired)
+      if (err.response?.status === 401 && !(err.config as any).__retried) {
+        invalidateToken();
+        const retryConfig = { ...err.config, __retried: true } as any;
+        const newToken = await getToken();
+        retryConfig.headers.Authorization = `Bearer ${newToken}`;
+        log.info("HTTP retry after 401", { url: retryConfig.url });
+        return http.request(retryConfig);
+      }
     }
     return Promise.reject(err);
   }

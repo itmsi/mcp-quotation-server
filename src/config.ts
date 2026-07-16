@@ -11,7 +11,9 @@ function requireEnv(name: string): string {
 }
 
 export const config = {
-  apiBaseUrl: requireEnv("API_BASE_URL").replace(/\/+$/, ""), // strip trailing slash
-  apiToken: requireEnv("API_TOKEN"),
+  apiBaseUrl: requireEnv("API_BASE_URL").replace(/\/+$/, ""),
+  authUrl: requireEnv("AUTH_URL"),
+  authEmail: requireEnv("AUTH_EMAIL"),
+  authPassword: requireEnv("AUTH_PASSWORD"),
   timeoutMs: Number(process.env.API_TIMEOUT_MS ?? 30000),
 };
