@@ -14,12 +14,14 @@ app.use(express.json());
 
 const transports: Record<string, StreamableHTTPServerTransport> = {};
 
-// ── OAuth client_id + client_secret validation ──────────────────────────────
+// ── OAuth validation ─────────────────────────────────────────────────────────
+// Client kirim: Authorization: Bearer <client_id>:<client_secret>
 function checkOAuth(req: Request, res: Response, next: NextFunction) {
   if (!config.oauth.enabled) return next();
 
-  const clientId = req.headers["x-oauth-client-id"] as string | undefined;
-  const clientSecret = req.headers["x-oauth-client-secret"] as string | undefined;
+  const authHeader = req.headers["authorization"] as string | undefined;
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
+  const [clientId, clientSecret] = token?.split(":") ?? [];
 
   if (clientId !== config.oauth.clientId || clientSecret !== config.oauth.clientSecret) {
     log.error("OAuth rejected", { clientId: clientId ?? "(missing)", ip: req.ip });
@@ -34,7 +36,7 @@ function checkOAuth(req: Request, res: Response, next: NextFunction) {
   log.info("OAuth OK", { clientId });
   next();
 }
-// ────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 
 app.post("/mcp", checkOAuth, async (req: Request, res: Response) => {
   const sessionId = req.headers["mcp-session-id"] as string | undefined;
