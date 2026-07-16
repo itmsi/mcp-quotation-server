@@ -1,27 +1,42 @@
 #!/usr/bin/env node
-import express, { Request, Response } from "express";
+import express, { Request, Response, NextFunction } from "express";
 import { randomUUID } from "node:crypto";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { createMcpServer } from "./mcpServer.js";
 import { log } from "./logger.js";
-
-// ============================================================================
-// VERSI TANPA AUTH — buat debugging/setup awal koneksi dulu.
-// Endpoint /mcp di bawah ini TERBUKA untuk siapapun yang tahu URL-nya.
-// Setelah koneksi ke Claude berhasil dan stabil, TAMBAHKAN LAGI proteksi
-// (lihat komentar "TODO: auth" di bawah, atau minta saya pasang ulang).
-// ============================================================================
+import { config } from "./config.js";
 
 const PORT = Number(process.env.MCP_HTTP_PORT ?? 9533);
 
 const app = express();
 app.use(express.json());
 
-// Simpan transport per session, supaya request lanjutan pakai koneksi yang sama
 const transports: Record<string, StreamableHTTPServerTransport> = {};
 
-app.post("/mcp", async (req: Request, res: Response) => {
+// ── OAuth client_id + client_secret validation ──────────────────────────────
+function checkOAuth(req: Request, res: Response, next: NextFunction) {
+  if (!config.oauth.enabled) return next();
+
+  const clientId = req.headers["x-oauth-client-id"] as string | undefined;
+  const clientSecret = req.headers["x-oauth-client-secret"] as string | undefined;
+
+  if (clientId !== config.oauth.clientId || clientSecret !== config.oauth.clientSecret) {
+    log.error("OAuth rejected", { clientId: clientId ?? "(missing)", ip: req.ip });
+    res.status(401).json({
+      jsonrpc: "2.0",
+      error: { code: -32001, message: "Unauthorized: client_id atau client_secret tidak valid" },
+      id: null,
+    });
+    return;
+  }
+
+  log.info("OAuth OK", { clientId });
+  next();
+}
+// ────────────────────────────────────────────────────────────────────────────
+
+app.post("/mcp", checkOAuth, async (req: Request, res: Response) => {
   const sessionId = req.headers["mcp-session-id"] as string | undefined;
   const method = req.body?.method ?? "unknown";
   log.info(`MCP <-- ${method}`, { sessionId: sessionId ?? "(new)", body: req.body });
@@ -71,19 +86,20 @@ async function handleSessionRequest(req: Request, res: Response) {
   await transports[sessionId].handleRequest(req, res);
 }
 
-app.get("/mcp", handleSessionRequest);
-app.delete("/mcp", handleSessionRequest);
+app.get("/mcp", checkOAuth, handleSessionRequest);
+app.delete("/mcp", checkOAuth, handleSessionRequest);
 
 app.get("/health", (_req: Request, res: Response) => {
-  res.json({ status: "ok", activeSessions: Object.keys(transports).length, auth: "disabled" });
+  res.json({
+    status: "ok",
+    activeSessions: Object.keys(transports).length,
+    oauth: config.oauth.enabled ? "enabled" : "disabled",
+  });
 });
 
 app.listen(PORT, () => {
   console.error(`mcp-quotation-server (HTTP) listening on port ${PORT}`);
   console.error(`  Endpoint MCP : http://localhost:${PORT}/mcp`);
   console.error(`  Health check : http://localhost:${PORT}/health`);
-  console.error(
-    "  PERINGATAN: server ini jalan TANPA AUTENTIKASI. Endpoint /mcp bisa diakses siapapun " +
-      "yang tahu URL-nya. Pasang lagi proteksi (token/OAuth/firewall) sebelum dipakai untuk data produksi."
-  );
+  console.error(`  OAuth guard  : ${config.oauth.enabled ? "ENABLED" : "DISABLED"}`);
 });
