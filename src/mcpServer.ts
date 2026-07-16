@@ -6,6 +6,7 @@ import {
 import { allTools, findTool } from "./tools/index.js";
 import { executeTool } from "./executor.js";
 import { ApiCallError } from "./httpClient.js";
+import { log } from "./logger.js";
 
 /**
  * Bikin instance MCP Server baru yang sudah lengkap dengan handler
@@ -27,6 +28,7 @@ export function createMcpServer(): Server {
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
+    log.info(`MCP tools/list`, { count: allTools.length });
     return {
       tools: allTools.map((t) => ({
         name: t.name,
@@ -38,9 +40,11 @@ export function createMcpServer(): Server {
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
+    log.info(`MCP tools/call --> ${name}`, { args });
 
     const tool = findTool(name);
     if (!tool) {
+      log.error(`MCP tools/call tool not found: ${name}`);
       return {
         isError: true,
         content: [{ type: "text", text: `Tool tidak ditemukan: ${name}` }],
@@ -49,6 +53,7 @@ export function createMcpServer(): Server {
 
     try {
       const result = await executeTool(tool, args);
+      log.info(`MCP tools/call <-- ${name} OK`);
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
@@ -60,6 +65,7 @@ export function createMcpServer(): Server {
             }`
           : `Terjadi kesalahan: ${(err as Error).message}`;
 
+      log.error(`MCP tools/call <-- ${name} ERROR`, { message });
       return {
         isError: true,
         content: [{ type: "text", text: message }],

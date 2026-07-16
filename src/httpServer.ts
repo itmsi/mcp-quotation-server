@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { createMcpServer } from "./mcpServer.js";
+import { log } from "./logger.js";
 
 // ============================================================================
 // VERSI TANPA AUTH — buat debugging/setup awal koneksi dulu.
@@ -22,21 +23,25 @@ const transports: Record<string, StreamableHTTPServerTransport> = {};
 
 app.post("/mcp", async (req: Request, res: Response) => {
   const sessionId = req.headers["mcp-session-id"] as string | undefined;
+  const method = req.body?.method ?? "unknown";
+  log.info(`MCP <-- ${method}`, { sessionId: sessionId ?? "(new)", body: req.body });
+
   let transport: StreamableHTTPServerTransport;
 
   if (sessionId && transports[sessionId]) {
     transport = transports[sessionId];
   } else if (!sessionId && isInitializeRequest(req.body)) {
-    // Request pertama (initialize) -> buat session baru
     transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
       onsessioninitialized: (newSessionId) => {
         transports[newSessionId] = transport;
+        log.info(`MCP session created`, { sessionId: newSessionId });
       },
     });
 
     transport.onclose = () => {
       if (transport.sessionId) {
+        log.info(`MCP session closed`, { sessionId: transport.sessionId });
         delete transports[transport.sessionId];
       }
     };
@@ -44,6 +49,7 @@ app.post("/mcp", async (req: Request, res: Response) => {
     const server = createMcpServer();
     await server.connect(transport);
   } else {
+    log.error(`MCP bad request`, { sessionId, method });
     res.status(400).json({
       jsonrpc: "2.0",
       error: { code: -32000, message: "Bad Request: session ID tidak valid atau hilang" },

@@ -3,6 +3,7 @@ import path from "node:path";
 import FormData from "form-data";
 import { http, toApiCallError } from "./httpClient.js";
 import { ToolDef } from "./types.js";
+import { log } from "./logger.js";
 
 function extractPathParams(urlPath: string): string[] {
   const matches = [...urlPath.matchAll(/\{(\w+)\}/g)];
@@ -75,10 +76,14 @@ export async function executeTool(def: ToolDef, rawArgs: unknown): Promise<unkno
   const urlPath = buildPath(def, args);
   const bodyArgs = stripPathParams(def, args);
 
+  log.info(`API --> ${def.method} ${urlPath}`, { bodyLocation: def.bodyLocation, args: bodyArgs });
+
   try {
+    let res;
+
     if (def.bodyLocation === "multipart") {
       const form = await buildMultipartForm(def, bodyArgs);
-      const res = await http.request({
+      res = await http.request({
         method: def.method,
         url: urlPath,
         data: form,
@@ -86,18 +91,21 @@ export async function executeTool(def: ToolDef, rawArgs: unknown): Promise<unkno
         maxBodyLength: Infinity,
         maxContentLength: Infinity,
       });
-      return res.data;
+    } else if (def.bodyLocation === "none") {
+      res = await http.request({ method: def.method, url: urlPath });
+    } else {
+      res = await http.request({ method: def.method, url: urlPath, data: bodyArgs });
     }
 
-    if (def.bodyLocation === "none") {
-      const res = await http.request({ method: def.method, url: urlPath });
-      return res.data;
-    }
-
-    // bodyLocation === "json"
-    const res = await http.request({ method: def.method, url: urlPath, data: bodyArgs });
+    log.info(`API <-- ${res.status} ${def.method} ${urlPath}`, { data: res.data });
     return res.data;
   } catch (err) {
-    throw toApiCallError(err);
+    const apiErr = toApiCallError(err);
+    log.error(`API <-- ERROR ${def.method} ${urlPath}`, {
+      status: apiErr.status,
+      message: apiErr.apiMessage,
+      details: apiErr.details,
+    });
+    throw apiErr;
   }
 }
