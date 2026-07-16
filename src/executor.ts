@@ -82,7 +82,7 @@ export async function executeTool(def: ToolDef, rawArgs: unknown): Promise<unkno
         method: def.method,
         url: urlPath,
         data: form,
-        headers: form.getHeaders(),
+        headers: { ...form.getHeaders() },
         maxBodyLength: Infinity,
         maxContentLength: Infinity,
       });
